@@ -12,8 +12,13 @@
                                   # Constant #
 ###################################%%%%%%%%%%#
 
-NTS_DIR_DAILY=~/notes/daily
-NTS_DIR_TEMP=~/notes/temps
+if [[ "$NTS_DIR_DAILY" == "" ]]; then
+  NTS_DIR_DAILY=~/notes/daily
+fi
+
+if [[ "$NTS_DIR_TEMP" == "" ]]; then
+  NTS_DIR_TEMP=~/notes/temps
+fi
 
 ###################################%%%%%%%%%%#
                                   # Helpers  #
@@ -68,9 +73,9 @@ recap() {
     num=10
   fi
 
-  ( cd ${DAILY}
+  ( cd ${NTS_DIR_DAILY}
     (for f in $(ls -vt *.md | head -n ${num}); do
     echo ; echo --- $f ---          # newlines between files
     cat $f                          # print file after metadata
-    done)  | tee ~/share/reports/recap.md | $EDITOR -R  -   )
+    done)  | tee ~/share/reports/recap.md | $EDITOR -   )
 }
