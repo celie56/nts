@@ -44,10 +44,11 @@ temp() {
   local dirname="$1"
   cd ${NTS_DIR_TEMP}
   # Add unique identifier for easy filtering
+  base_dirname="$(today)_$(uuidgen | cut -c -8)"
   if [[ "$dirname" != "" ]]; then
-    dirname="$(uuidgen | cut -c -8)_${dirname}" 
+    dirname="${base_dirname}_${dirname}" 
   else
-    dirname="$(uuidgen | cut -c -8)" 
+    dirname="${base_dirname}" 
   fi
 
   # go to the directory even if it exists
