@@ -1,113 +1,117 @@
+################################################################################
+                                  # Overview #
+################################################################################
+#
+# This system is designed to expose 4 shell functions:
+#  1. now
+#     open today's daily markdown file
+#  
+#  2. temp "some note description"
+#     take me to a new, dated Atom where I might put multiple things in
+#
+#  3. tnote 1 # some integer taskwarrior index
+#     creates (if needed) and opens the Atom for a task from taskwarrior
+#
+#  4. recap
+#     review recent notes 
+#
+# The file structure is expected to look like:
+# --------------------------------------------
+#     notes/
+#         daily/
+#             20260104.md
+#         atoms/
+#             20260104_ABCD6789/
+#                 README.md
+# --------------------------------------------
+#
+################################################################################
+                               # Configuration #
+################################################################################
 
-########################################################%%%%%%%%%%%%%%%%%%%#
-                                                       # Table of contents #
-########################################################%%%%%%%%%%%%%%%%%%%#
-
-# 0. Overview
-# 1. Constant
-# 2. Helpers
-# 3. Drafting
-# 4. Review
-
-########################################################%%%%%%%%%%%%%%%%%%%#
-                                                                # Overview #
-########################################################%%%%%%%%%%%%%%%%%%%#
-
-# I like to have a consistent note taking system across computers
-# I also like that system to be as automated as possible
-# Oh and I want it to be totally custom because because
-
-# The three main functions I use are:
-#  1. now()
-#   * take me to a dated markdown file for me to get started jotting ideas
-#  2. temp()
-#   * take me to a new, dated folder where I might put multiple things in
-#  3. recap()
-#   * review recent notes (only from now() for now)
-
-# Future:
-# * organization of existing now() and temp() files
-#   * I have accumulated many and there is overlap that would make sense
-#     to be put together
-# * projects
-#   * this might be a way to organize the above...
-#     but I also want to "define" projects
-
-# Structure of my current ~/notes dir
-# * daily
-# * temps
-# * topics      (a form of organization -- but I create these individually)
-# * task_notes  (old notes associated with taskwarrior tasks)
-
-#################################################################%%%%%%%%%%#
-                                                                # Constant #
-#################################################################%%%%%%%%%%#
-
-if [[ "$NTS_DIR_DAILY" == "" ]]; then
-  NTS_DIR_DAILY=~/notes/daily
+if [[ "$NTS_DIR" == "" ]]; then
+  NTS_DIR="${HOME}/notes"
 fi
 
-if [[ "$NTS_DIR_TEMP" == "" ]]; then
-  NTS_DIR_TEMP=~/notes/temps
-fi
-
-#################################################################%%%%%%%%%%#
-                                                                # Helpers  #
-#################################################################%%%%%%%%%%#
-
-today() {
-  echo $(date "+%Y-%m-%d")
+################################################################################
+                                   # Daily #
+################################################################################
+today() { # produces YYYYMMDD like 20260104
+  date "+%Y%m%d"
 }
-
-#################################################################%%%%%%%%%%#
-                                                                # Drafting #
-#################################################################%%%%%%%%%%#
-
-wnow() {
-  echo ${NTS_DIR_DAILY}/$(today).md
+wnow() { 
+    echo "${NTS_DIR}/daily/$(today).md"
 }
-
 now() {
-  ${EDITOR} $(wnow)
+  ${EDITOR} "$(wnow)"
 }
 
+################################################################################
+                                   # Notes #
+################################################################################
+create_note() {
+
+    # Gather inputs
+    local date="$1" uuid="$2" desc="$3"
+    if [[ -z $date || -z $uuid || -z $desc ]]; then
+        echo "invalid usage of create_note" >&2
+        return 1
+    fi
+
+    # Create the atom
+    cd "${NTS_DIR}/atoms"
+    local dirname="${date}_${uuid}"
+    mkdir -p "${dirname}"   # creates the directory if it does not exist
+    cd       "${dirname}"
+    local note="README.md"
+
+    # Create and add description if the file does not already exist
+    if [[ ! -f "${note}" ]]; then
+        echo "# ${desc}" > ${note}
+    fi
+
+    # Update the daily if the atom is not already present
+    grep -Fq -- "${dirname}" "$(wnow)" 2>/dev/null \
+        || echo "* [${desc}](../atoms/${dirname}/${note})" >> "$(wnow)"
+
+    $EDITOR "${note}"
+
+}
+
+gen_uuid() { # produces unique id like aBcD1234
+    uuidgen | cut -c -8
+}
 temp() {
-  local dirname="$1"
-  cd ${NTS_DIR_TEMP}
-  # Add unique identifier for easy filtering
-  base_dirname="$(today)_$(uuidgen | cut -c -8)"
-  if [[ "$dirname" != "" ]]; then
-    dirname="${base_dirname}_${dirname}" 
-  else
-    dirname="${base_dirname}" 
-  fi
-
-  # go to the directory even if it exists
-  mkdir ${dirname}; cd ${dirname}
+    if [[ -z $1 ]]; then
+        echo "invalid usage: temp [description]"; return 1;
+    fi
+    create_note "$(today)" "$(gen_uuid)" "$1"
 }
 
-gotemp() {
-  local dirname="$(cd ${NTS_DIR_TEMP}; ls -t | fzf)"
-  if [[ "$dirname" != "" ]]; then
-    cd "${NTS_DIR_TEMP}/${dirname}"
-  fi
+tnote() {
+    local task_id="$1"
+    local description="$(task ${task_id} info | grep "^Description" | cut -d ' ' -f 2- | sed 's/^[ \t]*//')"
+    local uuid="$(task ${task_id} uuids | cut -c -8 )"
+    local creation_date="$(task ${task_id} | grep Entered | awk '{print $2}')"
+          creation_date="${creation_date//[^0-9]/}"
+
+    create_note "${creation_date}" "${uuid}" "${description}"
 }
 
-
-#################################################################%%%%%%%%%%#
-                                                                # Review   #
-#################################################################%%%%%%%%%%#
+################################################################################
+                                   # Review #
+################################################################################
 
 recap() {                
-  if [[ $# -gt 0 ]]; then
-    num=$1
-  else
-    num=10
-  fi
+    local num=${1:-50}
+    local report="${HOME}/temp.recap.md"
 
-  ( cd ${NTS_DIR_DAILY}
-    (for f in $(ls -vt *.md | head -n ${num}); do
-    echo ; echo --- $f ---          # newlines between files
-    cat $f                          # print file after metadata
-    done)  | tee ~/share/reports/recap.md | $EDITOR -   )
+    (   cd "${NTS_DIR}/daily"   # we want relative links to work in vim
+        (   for f in $(ls -vt -- *.md | head -n ${num}); do
+            echo ; echo "--- $f ---"          # newlines between files
+            cat "$f"                          # print file after metadata
+            done
+        )     > "${report}"
+        $EDITOR "${report}"
+    )
 }
